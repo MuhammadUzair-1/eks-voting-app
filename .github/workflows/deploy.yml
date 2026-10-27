@@ -1,0 +1,113 @@
+
+
+name: Build and Deploy Voting App to EKS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: eu-central-1
+  EKS_CLUSTER_NAME: uzair-voting-app-eks
+  K8S_NAMESPACE: voting-app
+
+jobs:
+  build-and-deploy:
+    name: Build Images and Deploy to EKS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Vote image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./vote
+          file: ./vote/Dockerfile.uzair
+          push: true
+          tags: |
+            uzairirondocker/eks-voting-frontend:${{ github.sha }}
+            uzairirondocker/eks-voting-frontend:latest
+
+      - name: Build and push Result image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./result
+          file: ./result/Dockerfile.uzair
+          push: true
+          tags: |
+            uzairirondocker/eks-voting-result:${{ github.sha }}
+            uzairirondocker/eks-voting-result:latest
+
+      - name: Build and push Worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./worker
+          file: ./worker/Dockerfile.uzair
+          push: true
+          tags: |
+            uzairirondocker/eks-voting-worker:${{ github.sha }}
+            uzairirondocker/eks-voting-worker:latest
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure kubectl for EKS
+        run: |
+          aws eks update-kubeconfig \
+            --region "$AWS_REGION" \
+            --name "$EKS_CLUSTER_NAME"
+
+      - name: Deploy Kubernetes resources
+        run: |
+          kubectl apply -k K8s/
+
+      - name: Update application images
+        run: |
+          kubectl set image deployment/vote \
+            vote=uzairirondocker/eks-voting-frontend:${GITHUB_SHA} \
+            -n "$K8S_NAMESPACE"
+
+          kubectl set image deployment/result \
+            result=uzairirondocker/eks-voting-result:${GITHUB_SHA} \
+            -n "$K8S_NAMESPACE"
+
+          kubectl set image deployment/worker \
+            worker=uzairirondocker/eks-voting-worker:${GITHUB_SHA} \
+            -n "$K8S_NAMESPACE"
+
+      - name: Wait for deployments
+        run: |
+          kubectl rollout status deployment/vote \
+            -n "$K8S_NAMESPACE" --timeout=180s
+
+          kubectl rollout status deployment/result \
+            -n "$K8S_NAMESPACE" --timeout=180s
+
+          kubectl rollout status deployment/worker \
+            -n "$K8S_NAMESPACE" --timeout=180s
+
+      - name: Show deployed images
+        run: |
+          kubectl get deployments -n "$K8S_NAMESPACE"
+          kubectl get pods -n "$K8S_NAMESPACE"
+

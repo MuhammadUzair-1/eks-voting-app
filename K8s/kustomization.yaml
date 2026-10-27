@@ -3,7 +3,6 @@ kind: Kustomization
 namespace: voting-app
 resources:
   - 00-namespace.yaml
-  - 01-postgres-secret.yaml
   - 02-storage-class.yaml
   - 03-postgres.yaml
   - 04-redis.yaml
