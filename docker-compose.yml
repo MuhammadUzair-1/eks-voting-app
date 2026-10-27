@@ -1,0 +1,71 @@
+
+
+services:
+  vote:
+    image: uzairirondocker/my-vote:v2
+    build:
+      context: ./vote
+      dockerfile: Dockerfile.uzair
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "8082:8080"
+    networks:
+      - back-tier
+
+  result:
+    image: uzairirondocker/my-result:v1
+    build:
+      context: ./result
+      dockerfile: Dockerfile.uzair
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8081:80"
+    networks:
+      - back-tier
+
+  worker:
+    image: uzairirondocker/my-worker:v1
+    build:
+      context: ./worker
+      dockerfile: Dockerfile.uzair
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+    networks:
+      - back-tier
+
+  redis:
+    image: redis:alpine
+    volumes:
+      - "./healthchecks:/healthchecks"
+    healthcheck:
+      test: /healthchecks/redis.sh
+      interval: "5s"
+    networks:
+      - back-tier
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: "postgres"
+      POSTGRES_PASSWORD: "postgres"
+    volumes:
+      - "db-data:/var/lib/postgresql/data"
+      - "./healthchecks:/healthchecks"
+    healthcheck:
+      test: /healthchecks/postgres.sh
+      interval: "5s"
+    networks:
+      - back-tier
+
+volumes:
+  db-data:
+
+networks:
+  back-tier:

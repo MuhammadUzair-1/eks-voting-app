@@ -1,0 +1,9 @@
+# .NET build files
+**/bin/
+**/obj/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+K8s/01-postgres-secret.yaml
